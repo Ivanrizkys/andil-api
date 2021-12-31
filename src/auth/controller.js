@@ -40,7 +40,6 @@ module.exports = {
 	},
 	signin: async (req, res) => {
 		try {
-			console.log("masuk 1")
 			const { email, password } = req.body;
 			// * check email
 			const checkEmail = await prisma.akun.findFirst({
@@ -51,14 +50,12 @@ module.exports = {
 					password: true,
 				},
 			});
-			console.log("masuk 2")
 			if (!checkEmail) return res.status(401).send("Email not match");
 			// * check password
 			const checkPassword = await bcrypt.compare(
 				password,
 				checkEmail.password
 			);
-			console.log("masuk 3")
 			if (!checkPassword) return res.status(401).send("Password incorect");
 			// * generate token
 			jwt.sign(
@@ -71,9 +68,7 @@ module.exports = {
 					expiresIn: "7d",
 				},
 				(err, token) => {
-					console.log("masuk 4")
 					if (err) return err;
-					console.log("masuk 5")
 					res.status(200).json({
 						succes: true,
 						message: "Login succesfully",
