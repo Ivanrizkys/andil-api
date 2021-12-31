@@ -1,7 +1,8 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { jwtSecret } = require("../../config");
-const prisma = require("../../libs/prisma");
+const db = require("../../libs/db");
+const { dbInsert } = require("../../libs/mysql-promise");
 const { genSalt, genHash } = require("../../libs/bcrypt-promise");
 
 module.exports = {
@@ -9,26 +10,33 @@ module.exports = {
 		try {
 			const { nama, email, password } = req.body;
 			// * validating email
-			const valEmail = await prisma.akun.findFirst({
-				where: { email },
-				select: { email: true },
-			});
-			if (valEmail) return res.status(422).send("Email is alredy used");
+			const valEmailQuery = () => {
+				return new Promise((resolve, reject) => {
+					db.query(
+						"SELECT email FROM Akun WHERE email = ?",
+						[email],
+						(err, result) => {
+							if (err) reject(err);
+							resolve(result);
+						}
+					);
+				});
+			};
+			const valEmail = await valEmailQuery();
+			if (valEmail.length >= 1)
+				return res.status(422).send("Email is alredy used");
 			// * generate password
 			const salt = await genSalt(10);
 			const hash = await genHash(salt, password);
 			// * create new user
-			const createUser = await prisma.akun.create({
-				data: {
-					nama,
-					email,
-					password: hash,
-				},
-			});
+			const createUser = await dbInsert(
+				"Akun",
+				["nama", "email", "password"],
+				[`'${nama}'`, `'${email}'`, `'${hash}'`]
+			);
 			res.status(200).json({
 				succes: true,
 				message: "Create account succesfully",
-				data: createUser,
 			});
 		} catch (err) {
 			return res.status(500).json({
@@ -42,26 +50,33 @@ module.exports = {
 		try {
 			const { email, password } = req.body;
 			// * check email
-			const checkEmail = await prisma.akun.findFirst({
-				where: { email },
-				select: {
-					nama: true,
-					email: true,
-					password: true,
-				},
-			});
-			if (!checkEmail) return res.status(401).send("Email not match");
+			const checkEmailQuery = () => {
+				return new Promise((resolve, reject) => {
+					db.query(
+						"SELECT * FROM Akun WHERE email = ?",
+						[email],
+						(err, result) => {
+							if (err) reject(err);
+							resolve(result);
+						}
+					);
+				});
+			};
+			const checkEmail = await checkEmailQuery();
+			if (checkEmail.length < 1)
+				return res.status(401).send("Email not match");
 			// * check password
 			const checkPassword = await bcrypt.compare(
 				password,
-				checkEmail.password
+				checkEmail[0].password
 			);
-			if (!checkPassword) return res.status(401).send("Password incorect");
+			if (!checkPassword)
+				return res.status(401).send("Password incorect");
 			// * generate token
 			jwt.sign(
 				{
-					nama: checkEmail.nama,
-					email: checkEmail.email,
+					nama: checkEmail[0].nama,
+					email: checkEmail[0].email,
 				},
 				jwtSecret,
 				{
@@ -75,9 +90,9 @@ module.exports = {
 						data: {
 							token,
 							user: {
-								nama: checkEmail.nama,
-								email: checkEmail.email
-							}
+								nama: checkEmail[0].nama,
+								email: checkEmail[0].email,
+							},
 						},
 					});
 				}
